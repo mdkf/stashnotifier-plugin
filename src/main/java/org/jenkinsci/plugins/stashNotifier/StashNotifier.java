@@ -250,10 +250,6 @@ public class StashNotifier extends Notifier implements SimpleBuildStep {
 	private String getRootUrl() {
 		Jenkins instance = Jenkins.getInstance();
 
-		if (null == instance) {
-			return globalConfig.getUrl();
-		}
-
 		return (instance.getRootUrl() != null) ? instance.getRootUrl() : globalConfig.getUrl();
 	}
 

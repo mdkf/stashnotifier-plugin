@@ -65,6 +65,7 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.ProxyAuthenticationStrategy;
 import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
+import org.jenkinsci.plugins.displayurlapi.DisplayURLProvider;
 import org.jenkinsci.plugins.tokenmacro.MacroEvaluationException;
 import org.jenkinsci.plugins.tokenmacro.TokenMacro;
 import org.kohsuke.stapler.AncestorInPath;
@@ -128,6 +129,9 @@ public class StashNotifier extends Notifier implements SimpleBuildStep {
 	/** whether to send INPROGRESS notification at the build start */
 	private final boolean disableInprogressNotification;
 
+	/** whether to consider UNSTABLE builds as failures or success */
+	private final boolean considerUnstableAsSuccess;
+
 	private JenkinsLocationConfiguration globalConfig = new JenkinsLocationConfiguration();
 
 // public members ----------------------------------------------------------
@@ -146,7 +150,8 @@ public class StashNotifier extends Notifier implements SimpleBuildStep {
 			boolean includeBuildNumberInKey,
 			String projectKey,
 			boolean prependParentProjectKey,
-			boolean disableInprogressNotification
+			boolean disableInprogressNotification,
+			boolean considerUnstableAsSuccess
 	) {
 
 
@@ -161,6 +166,7 @@ public class StashNotifier extends Notifier implements SimpleBuildStep {
 		this.projectKey = projectKey;
 		this.prependParentProjectKey = prependParentProjectKey;
 		this.disableInprogressNotification = disableInprogressNotification;
+		this.considerUnstableAsSuccess = considerUnstableAsSuccess;
 	}
 
 	public boolean isDisableInprogressNotification() {
@@ -225,14 +231,20 @@ public class StashNotifier extends Notifier implements SimpleBuildStep {
 
 		PrintStream logger = listener.getLogger();
 
-		Result result = run.getResult();
-		if (result == null && disableInProgress) {
+		Result buildResult = run.getResult();
+		if (buildResult == null && disableInProgress) {
 			return true;
-		} else if (result == null) {
+		} else if (buildResult == null) {
 			state = StashBuildState.INPROGRESS;
-		} else if (result.equals(Result.SUCCESS)) {
+		} else if (buildResult == Result.SUCCESS) {
 			state = StashBuildState.SUCCESSFUL;
-		} else if (result.equals(Result.NOT_BUILT)) {
+		} else if (buildResult == Result.UNSTABLE && considerUnstableAsSuccess) {
+			logger.println("UNSTABLE reported to stash as SUCCESSFUL");
+			state = StashBuildState.SUCCESSFUL;
+		} else if (buildResult == Result.ABORTED && disableInProgress) {
+			logger.println("ABORTED");
+			return true;
+		} else if (buildResult.equals(Result.NOT_BUILT)) {
 			logger.println("NOT BUILT");
 			return true;
 		} else {
@@ -861,7 +873,7 @@ public class StashNotifier extends Notifier implements SimpleBuildStep {
         json.put("name", abbreviate(fullName, MAX_FIELD_LENGTH));
 
 		json.put("description", abbreviate(getBuildDescription(run, state), MAX_FIELD_LENGTH));
-		json.put("url", abbreviate(getRootUrl().concat(run.getUrl()), MAX_URL_FIELD_LENGTH));
+		json.put("url", abbreviate(DisplayURLProvider.get().getRunURL(run), MAX_URL_FIELD_LENGTH));
 
         return new StringEntity(json.toString(), "UTF-8");
 	}
